@@ -38,7 +38,7 @@ def callback(ch, method, properties, body):
 
     requestParams = json.loads(body.decode('utf-8'))
 
-    print("in function consuming inbound...")
+
 
     url = str(requestParams["url"])
     source_page = str(requestParams["sourcePage"])
@@ -46,6 +46,8 @@ def callback(ch, method, properties, body):
     original_file_name = get_file_name(url)
 
     filename, file_extension = os.path.splitext(original_file_name)
+
+    print("in function consuming inbound...with file {}".format(filename))
 
     hash_object = hashlib.md5(url.encode('utf-8'))
     hash_str = hash_object.hexdigest()

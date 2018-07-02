@@ -23,7 +23,9 @@ class Inspiration_Image(DeclarativeBase):
     url = Column(String(5000))
     classifyPath = Column(String(5000))
     sourcePage = Column(String(5000))
+    isRejected = Column(SmallInteger())
 
     def __repr__(self):
         return "<inspiration_image(urlHash='%s', url='%s')>" % (
                                 self.urlHash, self.url)
+

@@ -1,15 +1,10 @@
 #!/usr/bin/env python
 import pika
 import json
-import uuid
 import os
-import shutil
 from urllib3.exceptions import HTTPError as BaseHTTPError
 
-import analysis.googleVAPI as google
-import analysis.comfashVAPI as CF
-import indexing.searchable as SOLR
-
+from analysis.comfashVAPI import  ComfashVAPI
 from resultdata import insert_session_object_to_mongo as resultHdl
 
 connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
@@ -18,11 +13,12 @@ channel = connection.channel()
 channel.queue_declare(queue='classify')
 
 global db
+global comfash_vapi
 
 def callback(ch, method, properties, body):
 
     global db
-
+    global comfash_vapi
 
     requestParams = json.loads(body.decode('utf-8'))
 
@@ -46,7 +42,6 @@ def callback(ch, method, properties, body):
 
     flag_copy_thumbs = requestParams["flagCopyThumbs"]
 
-
     existing_document = db.mongo_db.inspiration.find({"id" : session_id })
 
     if existing_document.count() == 0:
@@ -60,145 +55,54 @@ def callback(ch, method, properties, body):
 
         child_documents = doc["_childDocuments_"]
 
-        new_blank_child_documents = []
+        if 'all' in target_models:
+            new_blank_child_documents = []
+        else:
+            new_blank_child_documents = []
 
-        for ch_doc in child_documents:
-            if ch_doc["attr_type"] not in target_models:
-                new_blank_child_documents.append(ch_doc)
+            for ch_doc in child_documents:
+                if ch_doc["attr_type"] not in target_models:
+                    new_blank_child_documents.append(ch_doc)
 
     try:
 
-        # retrieving labels and classifying
+        # retrieving labels and classifying for the image = session_thumbnail_path
 
-        if ("clothing" in target_models) or ("all" in target_models):
-            cf_labels_clothing = CF.classify_image("clothing", session_thumbnail_path)
-        else:
-            cf_labels_clothing = []
-
-        if ("gender" in target_models) or ("all" in target_models):
-            cf_labels_gender = CF.classify_image("gender", session_thumbnail_path)
-        else:
-            cf_labels_gender = []
-
-
-        if ("footwear" in target_models) or ("all" in target_models):
-            cf_labels_footwear = CF.classify_image("footwear", session_thumbnail_path)
-        else:
-            cf_labels_footwear = []
-
-        if ("g-label" in target_models) or ("all" in target_models):
-            g_labels = google.classify_labels(session_thumbnail_path)
-        else:
-            g_labels = []
+        cf_labels = comfash_vapi.detect_and_classify_items(session_thumbnail_path, session_id, target_models)
 
         print_string = ""
 
         # creating uniform labels for indexing
 
-        for l in g_labels:
+        for l in cf_labels:
 
-            uuid_item = uuid.uuid1()
-            label_id = uuid_item.hex
+            # for now: add all labels
 
-            new_label = {
-                "path": session_id + ".session.label",
-                "id": label_id,
-                "attr_type": "g-label",
-                "attr_origin": "GVAPI",
-                "labels": l["cat"],
-                "prob": l["prob"]
-            }
+            new_blank_child_documents.append(dict(l))
 
-            print_string = print_string + "," + l["cat"]
-
-            new_blank_child_documents.append(new_label)
+            #if ch_doc["attr_type"] in target_models or target_models == 'all':
+            #    new_blank_child_documents.append(l)
 
 
-        for l in cf_labels_clothing:
-
-            uuid_item = uuid.uuid1()
-            label_id = uuid_item.hex
-
-            new_label = {
-                "path": session_id + ".session.label",
-                "id": label_id,
-                "attr_type": "clothing",
-                "attr_color" : "#000000",
-                "attr_origin": "CFVAPI",
-                "labels": l["cat"],
-                "prob": l["prob"],
-            }
-
-            print_string = print_string + "," + l["cat"]
-
-            new_blank_child_documents.append(new_label)
-
-        for l in cf_labels_gender:
-
-            # setting cut for gender at 30% certainty
-
-            if l["prob"] > 0.3:
-
-                uuid_item = uuid.uuid1()
-                label_id = uuid_item.hex
-
-                new_label = {
-                    "path": session_id + ".session.label",
-                    "id": label_id,
-                    "attr_type": "gender",
-                    "attr_origin": "CFVAPI",
-                    "attr_color" : "#000000",
-                    "labels": l["cat"],
-                    "prob": l["prob"],
-                }
-
-                print_string = print_string + "," + l["cat"]
-
-                new_blank_child_documents.append(new_label)
-
-        for l in cf_labels_footwear:
-
-            # setting cut for gender at 10% certainty
-
-            if l["prob"] > 0.1:
-
-                uuid_item = uuid.uuid1()
-                label_id = uuid_item.hex
-
-                new_label = {
-                    "path": session_id + ".session.label",
-                    "id": label_id,
-                    "attr_type": "footwear",
-                    "attr_origin": "CFVAPI",
-                    "attr_color" : "#000000",
-                    "labels": l["cat"],
-                    "prob": l["prob"],
-                }
-
-                print_string = print_string + "," + l["cat"]
-
-                new_blank_child_documents.append(new_label)
-
-
-
-        # copy file into application environment if flag = true
+        # deprecated (moved towards copying over webenvironment if flag = true
 
         if flag_copy_thumbs:
 
-            classify_path = os.environ.get('FILE_OUTPUT_PATH_FOR_CLASSIFY')
+            #classify_path = os.environ.get('FILE_OUTPUT_PATH_FOR_CLASSIFY')
 
-            application_path = os.environ.get('FILE_OUTPUT_FOR_COMFASH_APPLICATION')
+            #application_path = os.environ.get('FILE_OUTPUT_FOR_COMFASH_APPLICATION')
 
-            src = classify_path + file_name
-            dst = application_path + file_name
-            shutil.copy(src, dst)
+            #src = classify_path + file_name
+            #dst = application_path + file_name
+            #shutil.copy(src, dst)
 
-            print("moving file complete")
+            print("copying via flag is no longer available, copying takes place over webservice")
 
         session_object = {
             "id" : session_id,
             "path": session_id + ".session",
             "owner": session_owner,
+            "isValidated" : False,
             "origPath": orig_Path,
             "origEntity": orig_entity,
             "sessionThumbnailPath": "/p/" + file_name,
@@ -207,29 +111,26 @@ def callback(ch, method, properties, body):
             "_childDocuments_" : new_blank_child_documents
         }
 
-        # store data in result pool
+        # store data in result pool ready for validation
 
-        resultHdl(db, session_object)
+        classify_path = os.environ.get('FILE_OUTPUT_PATH_FOR_CLASSIFY')
+        src_object = classify_path + file_name
 
-        session_object.pop("_id", None)
+        resultHdl(db, session_object, src_object)
 
-        # posting to index
 
-        SOLR.add_session_to_index(session_object)
-
-        print("done with file: " + session_thumbnail_path)
+        print("done with file and progressed into verify-queue: " + session_thumbnail_path)
         print("following labels found: " + print_string)
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     except BaseHTTPError as err:
-        print("WARNING - SOMETHING WENT WRONG")
+        print("WARNING - SOMETHING WENT WRONG with a HTTP request in classifying")
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     except:
         print("WARNING - OTHER THAN HTTP FAILURE - SOMETHING WENT WRONG, ACK=FALSE")
-
-     #   pass
+        pass
 
 
 
@@ -237,6 +138,9 @@ def init_consuming(data_base):
 
     global db
     db = data_base
+
+    global comfash_vapi
+    comfash_vapi = ComfashVAPI()
 
     print("start consuming...")
 
