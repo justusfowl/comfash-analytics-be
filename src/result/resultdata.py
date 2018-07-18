@@ -36,7 +36,6 @@ def insert_session_object_to_mongo(db, session_object, source_object):
 
     db.mongo_db.inspiration.insert_one(session_object)
 
-
 def reindex(db):
 
     SOLR.remove_index()
