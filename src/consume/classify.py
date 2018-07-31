@@ -67,8 +67,11 @@ def callback(ch, method, properties, body):
     try:
 
         # retrieving labels and classifying for the image = session_thumbnail_path
+        #
+        # FOR NOW: disable classification and create plain items into MongoDB
 
-        cf_labels = comfash_vapi.detect_and_classify_items(session_thumbnail_path, session_id, target_models)
+        #cf_labels = comfash_vapi.detect_and_classify_items(session_thumbnail_path, session_id, target_models)
+        cf_labels = []
 
         print_string = ""
 
