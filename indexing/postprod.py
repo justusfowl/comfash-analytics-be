@@ -12,9 +12,9 @@ solr_port = os.environ.get('SOLR_PORT')
 
 solr = pysolr.Solr('http://' + str(solr_host_prod) + ':' + str(solr_port) + '/solr/' + str(solr_collection), timeout=10)
 
-def add_session_to_prod_index(sessionObjectInput):
+def add_session_to_prod_index(label_dict, sessionObjectInput):
 
-    sessionObject = prepare_fields_session_object(sessionObjectInput)
+    sessionObject = prepare_fields_session_object(label_dict, sessionObjectInput)
 
     # delete old object and reindex entire document
 
@@ -58,13 +58,13 @@ def prepare_posting(session_object):
 
     return my_item
 
-def post_item_to_prod(session_object):
+def post_item_to_prod(label_dict,session_object):
 
     post_object = prepare_posting(session_object)
 
     print("indexing: " + str(post_object["id"]))
 
-    add_session_to_prod_index(post_object)
+    add_session_to_prod_index(label_dict, post_object)
 
 def init_post_to_prod_index(db):
 
