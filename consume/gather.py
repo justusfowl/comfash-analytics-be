@@ -17,7 +17,7 @@ from util import get_entity_name, get_file_name
 from libs import googleimages
 
 
-connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+connection = pika.BlockingConnection(pika.ConnectionParameters('localhost', heartbeat_interval=500))
 channel = connection.channel()
 
 channel.queue_declare(queue='gather')
@@ -27,51 +27,51 @@ global db
 
 def process_crawled_image(db, session, object, search_phrase, userId):
 
-    local_session = session()
-
-    url = str(object["image_link"])
-    source_page = str(object["image_source"])
-
-    print("in function consuming inbound...with file {}".format(url))
-
-    image_date = ""
-
-    original_file_name = get_file_name(url)
-
-    filename, file_extension = os.path.splitext(original_file_name)
-
-    hash_object = hashlib.md5(url.encode('utf-8'))
-    hash_str = hash_object.hexdigest()
-
-    target_file_name = hash_str + file_extension
-
-    target_path_download = os.environ.get('FILE_OUTPUT_FOR_COMFASH_APPLICATION')
-
-    target_file_full_path_download = os.path.join(target_path_download, target_file_name)
-
-    os.makedirs(os.path.dirname(target_file_full_path_download), exist_ok=True)
-
-    # save image file to dedicated location
-
-    r = requests.get(url, allow_redirects=True)
-    open(target_file_full_path_download, 'wb').write(r.content)
-
-    # saving the information to the SQL index
-    new_inspiration = Inspiration_Image(urlHash=hash_str, url=url, sourcePage=source_page, classifyPath=target_file_full_path_download)
-
-    local_session.add(new_inspiration)
-
-    result_object = {
-        "id" : hash_str,
-        "session_owner" : "google-crawl",
-        "keywords" : search_phrase,
-        "target_file_name" : target_file_name,
-        "orig_path" : url,
-        "source_page": "source_page",
-        "userId" : userId
-    }
-
     try:
+        local_session = session()
+
+        url = str(object["image_link"])
+        source_page = str(object["image_source"])
+
+        print("in function consuming inbound...with file {}".format(url))
+
+        image_date = ""
+
+        original_file_name = get_file_name(url)
+
+        filename, file_extension = os.path.splitext(original_file_name)
+
+        hash_object = hashlib.md5(url.encode('utf-8'))
+        hash_str = hash_object.hexdigest()
+
+        target_file_name = hash_str + file_extension
+
+        target_path_download = os.environ.get('FILE_OUTPUT_FOR_COMFASH_APPLICATION')
+
+        target_file_full_path_download = os.path.join(target_path_download, target_file_name)
+
+        os.makedirs(os.path.dirname(target_file_full_path_download), exist_ok=True)
+
+        # save image file to dedicated location
+
+        r = requests.get(url, allow_redirects=True)
+        open(target_file_full_path_download, 'wb').write(r.content)
+
+        # saving the information to the SQL index
+        new_inspiration = Inspiration_Image(urlHash=hash_str, url=url, sourcePage=source_page, classifyPath=target_file_full_path_download)
+
+        local_session.add(new_inspiration)
+
+        result_object = {
+            "id" : hash_str,
+            "session_owner" : "google-crawl",
+            "keywords" : search_phrase,
+            "target_file_name" : target_file_name,
+            "orig_path" : url,
+            "source_page": source_page,
+            "userId" : userId
+        }
+
         local_session.commit()
 
         print("URL added to mysqlDB index")
@@ -91,6 +91,8 @@ def process_crawled_image(db, session, object, search_phrase, userId):
             print("unknown error adding user")
 
         pass
+    except:
+        print("Unknown error in processing the file {}".format(url))
 
 def push_image_to_mongo(db, result_object ):
 
@@ -140,14 +142,16 @@ def callback(ch, method, properties, body):
     paths,url_paths,all_objects = response.download(arguments, channel, userId)  # passing the arguments to the function
 
     for img in all_objects:
+        connection.process_data_events()
         process_crawled_image(db, session, img, search_phrase, userId)
+
         # try:
         #     process_crawled_image(db, session, img, search_phrase, userId)
         #
         # except:
         #     print("Something went wrong for the image {}".format(img["image_source"]))
 
-
+    print("Processing complete for request on - {}".format(search_phrase))
     # mark messages acknoledged for inbound channel
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
